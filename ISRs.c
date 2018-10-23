@@ -9,7 +9,10 @@
 ///////////////////////////////////////////////////////////////////////
 
 #include "DSP_Config.h"
-#include <stdio.h>
+
+#define FILTER_TAP_NUM 16 // 17 taps but array size is going to be 16
+
+
   
 // Data is received as 2 16-bit words (left/right) packed into one
 // 32-bit word.  The union allows the data to be accessed as a single 
@@ -26,7 +29,28 @@ volatile union {
 
 
 /* add any global variables here */
+int i;
+float xLeft[FILTER_TAP_NUM + 1], *pLeft = xLeft;
 
+float filter_taps[FILTER_TAP_NUM + 1] = {
+ -0.0923694208024749,
+ -0.03650640543188837,
+ 0.11875792315420561,
+ 0.0374948286074147,
+ -0.08103564828339961,
+ -0.042840979892957355,
+ 0.06320261016781677,
+ -0.13370575066235044,
+ 1.2308691004305696,
+ -0.13370575066235044,
+ 0.06320261016781677,
+ -0.042840979892957355,
+ -0.08103564828339961,
+ 0.0374948286074147,
+ 0.11875792315420561,
+ -0.03650640543188837,
+ -0.0923694208024749
+};
 
 interrupt void Codec_ISR()
 ///////////////////////////////////////////////////////////////////////
@@ -42,8 +66,11 @@ interrupt void Codec_ISR()
 ///////////////////////////////////////////////////////////////////////
 {                    
 	/* add any local variables here */
-	float xLeft, xRight, yLeft, yRight;
-	int x;
+	float xRight, yRight;
+	float output;
+
+	float *pCurrentSampleCounter;
+
 
 
  	if(CheckForOverrun())					// overrun error occurred (i.e. halted DSP)
@@ -53,20 +80,28 @@ interrupt void Codec_ISR()
 	
 	/* add your code starting here */
 
-	// this example simply copies sample data from in to out
-	xLeft  = CodecDataIn.Channel[ LEFT];
+
+	*pLeft  = CodecDataIn.Channel[ LEFT];
 	xRight = CodecDataIn.Channel[ RIGHT];
 
-	yLeft  = xLeft;
-	yRight = xRight;
-	for (x = 0; x < 1000000; x++)
+	*pLeft += 0.05; // right output was too low
+
+	output = 0;
+	pCurrentSampleCounter = pLeft;
+
+	if (++pLeft > &xLeft[FILTER_TAP_NUM])
+		pLeft = xLeft;
+	for (i = 0; i <= FILTER_TAP_NUM; i++)
 	{
-		if (x % 44100 == 0){
-			printf("Left sample x is %f", xLeft);
-		}
+		output += (*pCurrentSampleCounter--) * filter_taps[i];
+		if (pCurrentSampleCounter < &xLeft[0])
+			pCurrentSampleCounter = &xLeft[FILTER_TAP_NUM];
 	}
 
-	CodecDataOut.Channel[ LEFT] = yLeft;
+	yRight = xRight;
+
+
+	CodecDataOut.Channel[ LEFT] = output;
 	CodecDataOut.Channel[RIGHT] = yRight;
 
 	/* end your code here */
